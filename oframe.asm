@@ -1,7 +1,9 @@
 .model tiny
+.386
 
 .data
 ;--------------------CONSTS-------------------
+
 	console_horisontal_size equ 80d
 	console_vertical_size   equ 25d
 	console_vert_shift      equ 8d
@@ -13,6 +15,7 @@
 
 .code
 org 100h
+
 
 ;------------------Main-----------------------
 ;The Main function that calls others
@@ -29,14 +32,13 @@ Main:
 
 	call ReadFrameStyle
 
-	jmp PositionFrame
-
-back:
+	call PositionFrame
 
 	call DrawFrame
 
 	mov ax, 4c00h
 	int 21h
+
 ;-------------------------------------------------------------------
 
 
@@ -69,7 +71,7 @@ DrawFrame:
 	lodsb                              ;get RIGHT_UP symbol in videomem
 	stosw                              ;print RIGHT_UP symbol from videomem
 
-	add di, bp                         ;di += 96, 96 - shift for new line
+	add di, bp                         ;di += shift for new line
 
 	mov cl, dl                         ;cx = elem from FrameStyle in 14 position (=10)
 	mov ch, 0
@@ -104,13 +106,36 @@ DrawFrame:
 
 DrawVert:
 
-	push cx                              ;cx - number of cycle repeat;put it to stack
+	push ax
+	push cx                             ;cx - number of cycle repeat;put it to stack
+
+	mov ah, 0h
+	mov al, dl
+	mov cl, 2h
+	div cl
+	mov bx, ax
+
+	pop cx
+	cmp ah, 0h
+	pop ax
+	jna cycle_draw_vert
+
+	inc bx
+	mov bh, 0h
+
+cycle_draw_vert:
+
+	push cx
+
 	mov si, offset FrameStyle + 10       ;si = addres of VERT
 
 	lodsb                                ;get VERT symbol in videomem
 	stosw                                ;print VERT symbol from videomem
 
 	push ax
+
+	cmp cx, bx
+	je TextLine
 
 	mov ah, 00001111b                    ;colour
 	mov cl, dh                           ;cx = elem from FrameStyle in 16 position (=30)
@@ -120,16 +145,18 @@ DrawVert:
 	lodsb								 ;get SPACE symbol in videomem
 	rep stosw                            ;print SPACE symbol from videomem
 
+back_text_line:
+
 	pop ax
-	mov si, offset FrameStyle + 10       ;si = addres of VERT
+
+	mov si, offset FrameStyle + 10       ;si = address of VERT
 	lodsb                                ;get VERT symbol in videomem
 	stosw                                ;print VERT symbol from videomem
 
-	add di, bp                           ;di += 96, 96 - shift for new line ;TODO OPTIMISATION
-
 	pop cx                               ;cx = old cx (=10)
+	add di, bp                           ;di += 96, 96 - shift for new line
 
-	loop DrawVert						 ;cycle on cx (draw vertical lines lenght 10)
+	loop cycle_draw_vert	             ;cycle on cx (draw vertical lines lenght 10)
 	ret
 ;-------------------------------------------------------------------
 
@@ -157,10 +184,13 @@ PositionFrame:
 	mov bh, 2h
 	div bh                             ;al = ax / dl (=24)
 
+	mov cx, 2h
+
 	cmp ah, 0
 	jna  ax_honest
 
-	add bp, 2h                         ;bp = 2
+	add bp, 2h
+	mov cx, 0h
 
 ax_honest:
 
@@ -168,8 +198,8 @@ ax_honest:
 
 	mov bp, ax                         ;bp = 50
 	add bp, ax                         ;bp = 98
-	sub bp, 2h                         ;bp = 94
-
+	sub bp, 2h                         ;bp = 94 ;-2 for begining and ending elem of frame line
+	sub bp, cx
 
 	add di, ax						   ;di += ax (horisontal shift for first element of frame)
 
@@ -192,12 +222,11 @@ ax_honest:
 	add cl, console_horisontal_size
 	mul cl							  ;ax *= cx (=480)
 
-	;mov ah, 0h
-
 	add di, ax						  ;di = di + 3* (80 * 2) - adding nymber shifts lines times number of bytes in this strokes
 
-	jmp back
+	ret
 ;-------------------------------------------------------------------
+
 
 ;-----------------READFRAMESTYLE----------------
 ;ReadFrameStyle take arguments from console and
@@ -221,6 +250,7 @@ ReadFrameStyle:
 
 	ret
 ;-----------------------------------------------------------------
+
 
 ;----------------------ATOI---------------------
 ;Atoi get number's digits from string by subbing
@@ -258,12 +288,93 @@ end_cmd:
 
         inc si
         ret
+
 ;-----------------------------------------------------------------------------
+
+
+;---------------DrawText------------------
+;DrawText is drawing a constant text
+;of the frame
+;Entry: none
+;Exit: si, di
+;Distr: cx, si
+;-----------------------------------------
+
+DrawText 	proc
+
+		mov cx, 6h
+
+		mov si, offset Text
+
+draw_sym:
+
+		lodsb
+		stosw
+
+		loop draw_sym
+
+		endp
+		ret
+;-----------------------------------------------------------------------
+
+
+;-------------------TEXTLINE--------------------------
+;TextLine define horizontal center of the frame and
+;call DrawText to draw constant text in the center
+;Entry: dh - frame weight
+;Exit: di
+;Distr:	ax, cx, si
+;-----------------------------------------------------
+
+TextLine proc
+
+	mov ah, 0h
+	mov al, dh                           ;cx = elem from FrameStyle in 16 position (=30)
+	mov cl, 2h
+	div cl
+
+	mov cl, al
+	sub cl, 3h
+
+	cmp ah, 0
+	jna ax_honest1
+
+	inc cl
+
+ax_honest1:
+
+	mov ch, 0
+	push ax
+	mov ah, 00001111b                    ;colour
+	mov si, offset FrameStyle + 12       ;si = addres of SPACE
+
+	lodsb								 ;get SPACE symbol in videomem
+	rep stosw                            ;print SPACE symbol from videomem
+
+	call DrawText
+
+	pop ax
+	add cl, al
+	sub cl, 3h
+	mov ch, 0
+	mov ah, 00001111b                    ;colour
+	mov si, offset FrameStyle + 12       ;si = addres of SPACE
+
+	lodsb
+	rep stosw
+
+	endp
+	jmp back_text_line
+
+;-----------------------------------------------------------------------------
+
 
 ;array index: 0  1  |  2  3 | 4  5   |  6  7    |  8  9    |   10 11 | 12 13
 
 FrameStyle dw 0DAh,    0C4h,  0BFh,     0C0h,      0D9h,       0B3h,   32d,
 
 ;naming:      LEFT_UP  DASH   RIGHT_UP  LEFT_DOWN  RIGHT_DOWM  VERT    SPACE
+
+Text       db 'BOTAY!$'
 
 end 	Main
