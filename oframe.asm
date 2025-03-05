@@ -56,18 +56,18 @@ DrawFrame:
 
 	mov ah, 00011111b
 
-	mov si, offset FrameStyle          ;si = addres of LEFT_UP
+	;mov si, offset FrameStyle          ;si = addres of LEFT_UP
 	lodsb                              ;get LEFT_UP symbol in videomem
 	stosw                              ;print LEFT_UP symbol from videomem
 
 	mov cl, dh
 	mov ch, 0
 
-	mov si, offset FrameStyle + 2	   ;si = addres of DASH
+	;mov si, offset FrameStyle + 2	   ;si = addres of DASH
 	lodsb                              ;get DASH symbol in videomem
 	rep stosw						   ;print DASH symbol from videomem and repeat cx times
 
-	mov si, offset FrameStyle + 4      ;si = addres of RIGHT_UP
+	;mov si, offset FrameStyle + 4      ;si = addres of RIGHT_UP
 	lodsb                              ;get RIGHT_UP symbol in videomem
 	stosw                              ;print RIGHT_UP symbol from videomem
 
@@ -77,18 +77,18 @@ DrawFrame:
 	mov ch, 0
 	call DrawVert
 
-	mov si, offset FrameStyle + 6      ;si = addres of LEFT_DOWN
+	;mov si, offset FrameStyle + 6      ;si = addres of LEFT_DOWN
 	lodsb							   ;get LEFT_DOWN symbol in videomem
 	stosw                              ;print LEFT_DOWN symbol from videomem
 
 	mov cl, dh                         ;cx = elem from FrameStyle in 16 position (=30)
 	mov ch, 0
-	mov si, offset FrameStyle + 2      ;si = addres of DASH
+	;mov si, offset FrameStyle + 2      ;si = addres of DASH
 
 	lodsb                              ;get DASH symbol in videomem
 	rep stosw                          ;print RIGHT_UP symbol from videomem and repeat cx times
 
-	mov si, offset FrameStyle + 8      ;si = addres of RIGHT_DOWN
+	;mov si, offset FrameStyle + 8      ;si = addres of RIGHT_DOWN
 	lodsb							   ;GET RIGHT_DOWN symbol in videomem
 	stosw                              ;print RIGHT_DOWN symbol from videomem
 
@@ -127,7 +127,7 @@ cycle_draw_vert:
 
 	push cx
 
-	mov si, offset FrameStyle + 10       ;si = addres of VERT
+	;mov si, offset FrameStyle + 10       ;si = addres of VERT
 
 	lodsb                                ;get VERT symbol in videomem
 	stosw                                ;print VERT symbol from videomem
@@ -140,7 +140,7 @@ cycle_draw_vert:
 	mov ah, 00001111b                    ;colour
 	mov cl, dh                           ;cx = elem from FrameStyle in 16 position (=30)
 	mov ch, 0
-	mov si, offset FrameStyle + 12       ;si = addres of SPACE
+	;mov si, offset FrameStyle + 12       ;si = addres of SPACE
 
 	lodsb								 ;get SPACE symbol in videomem
 	rep stosw                            ;print SPACE symbol from videomem
@@ -149,14 +149,18 @@ back_text_line:
 
 	pop ax
 
-	mov si, offset FrameStyle + 10       ;si = address of VERT
+	;mov si, offset FrameStyle + 10       ;si = address of VERT
 	lodsb                                ;get VERT symbol in videomem
 	stosw                                ;print VERT symbol from videomem
 
 	pop cx                               ;cx = old cx (=10)
 	add di, bp                           ;di += 96, 96 - shift for new line
 
+	sub si, 3h
+
 	loop cycle_draw_vert	             ;cycle on cx (draw vertical lines lenght 10)
+
+	add si, 3h
 	ret
 ;-------------------------------------------------------------------
 
@@ -236,7 +240,7 @@ ax_honest:
 ;Distr: si, al, dh, dl
 ;-----------------------------------------------
 
-ReadFrameStyle:
+ReadFrameStyle	proc
 
 	mov si, cmd_addr
 
@@ -248,6 +252,7 @@ ReadFrameStyle:
 	pop dx
 	mov dl, al
 
+	endp
 	ret
 ;-----------------------------------------------------------------
 
@@ -302,21 +307,84 @@ end_cmd:
 
 DrawText 	proc
 
-		mov cx, 6h
+		mov cx, ax
+		add cx, ax
 
-		mov si, offset Text
+		mov si, 92h
 
 draw_sym:
 
 		lodsb
+		;push dx
+		;mov ah, 02h
+		;mov dl, al
+		;int 21h
+		;pop dx
 		stosw
 
 		loop draw_sym
+
+		;mov dl, 2h
+		;div dl
+
+		;cmp ah, 1h
+		;jne no_plus_one
+
+		;add cl, 1h
+
+;no_plus_one:
 
 		endp
 		ret
 ;-----------------------------------------------------------------------
 
+Strlen proc
+
+	mov bl, 0h
+
+	mov ax, si
+	push ax
+
+	mov si, 92h
+
+next_symbol:
+
+	mov bh, ds:[si]
+
+	cmp bh, 36d
+	je	end_text
+
+	inc bl
+	inc si
+
+	jmp next_symbol
+
+end_text:
+
+	inc bl
+	mov bh, 0h
+
+	mov ax, bx
+	mov bl, 2h
+	div bl
+
+	mov bl, al
+
+	pop ax
+	mov si, ax
+
+	;mov cx, 0
+	;cmp ah, 0
+	;jna ax_honest3
+
+	;mov cl, 1d
+	;mov ch, 1d
+
+;ax_honest3:
+
+	;push cx
+	endp
+	ret
 
 ;-------------------TEXTLINE--------------------------
 ;TextLine define horizontal center of the frame and
@@ -328,39 +396,55 @@ draw_sym:
 
 TextLine proc
 
+	call StrLen
+
 	mov ah, 0h
 	mov al, dh                           ;cx = elem from FrameStyle in 16 position (=30)
 	mov cl, 2h
 	div cl
 
 	mov cl, al
-	sub cl, 3h
+	sub cl, bl
 
-	cmp ah, 0
+	cmp ah, 0h
 	jna ax_honest1
 
 	inc cl
 
 ax_honest1:
 
-	mov ch, 0
+	mov ch, 0h
 	push ax
 	mov ah, 00001111b                    ;colour
-	mov si, offset FrameStyle + 12       ;si = addres of SPACE
+	;mov si, offset FrameStyle + 12       ;si = addres of SPACE
 
 	lodsb								 ;get SPACE symbol in videomem
 	rep stosw                            ;print SPACE symbol from videomem
+	push ax
+	mov ax, bx
+
+	mov bx, si
+	push bx
 
 	call DrawText
 
+	pop bx
+	mov si, bx
+	pop ax
+	mov bl, al
+
 	pop ax
 	add cl, al
-	sub cl, 3h
-	mov ch, 0
-	mov ah, 00001111b                    ;colour
-	mov si, offset FrameStyle + 12       ;si = addres of SPACE
 
-	lodsb
+	;pop ax
+	;sub cl, al
+
+	sub cl, 3h
+	mov ch, 0h
+	mov ah, 00001111b                    ;colour
+	;mov si, offset FrameStyle + 12       ;si = addres of SPACE
+
+	mov al, bl
 	rep stosw
 
 	endp
