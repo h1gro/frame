@@ -190,7 +190,7 @@ PositionFrame:
 
 	mov cx, 2h
 
-	cmp ah, 0
+	cmp ah, 0h
 	jna  ax_honest
 
 	add bp, 2h
@@ -307,19 +307,21 @@ end_cmd:
 
 DrawText 	proc
 
-		mov cx, ax
-		add cx, ax
+		mov ah, 00001111b
+
+		mov cx, bp
+		add cx, bp
 
 		mov si, 92h
 
 draw_sym:
 
-		lodsb
 		;push dx
 		;mov ah, 02h
 		;mov dl, al
 		;int 21h
 		;pop dx
+		lodsb
 		stosw
 
 		loop draw_sym
@@ -340,7 +342,7 @@ draw_sym:
 
 Strlen proc
 
-	mov bl, 0h
+	mov bp, 0h
 
 	mov ax, si
 	push ax
@@ -354,21 +356,21 @@ next_symbol:
 	cmp bh, 36d
 	je	end_text
 
-	inc bl
+	inc bp
 	inc si
 
 	jmp next_symbol
 
 end_text:
 
-	inc bl
-	mov bh, 0h
+	inc bp
 
-	mov ax, bx
+	mov ax, bp
 	mov bl, 2h
 	div bl
 
-	mov bl, al
+	mov ah, 0h
+	mov bp, ax
 
 	pop ax
 	mov si, ax
@@ -396,15 +398,18 @@ end_text:
 
 TextLine proc
 
+	push bp
+
 	call StrLen
 
+	mov ch, 0h
 	mov ah, 0h
 	mov al, dh                           ;cx = elem from FrameStyle in 16 position (=30)
 	mov cl, 2h
 	div cl
 
 	mov cl, al
-	sub cl, bl
+	sub cx, bp
 
 	cmp ah, 0h
 	jna ax_honest1
@@ -412,6 +417,13 @@ TextLine proc
 	inc cl
 
 ax_honest1:
+
+;	cmp bh, 0h
+;	jna bx_honest
+
+;	inc bl
+
+;bx_honest:
 
 	mov ch, 0h
 	push ax
@@ -439,7 +451,7 @@ ax_honest1:
 	;pop ax
 	;sub cl, al
 
-	sub cl, 3h
+	sub cx, bp
 	mov ch, 0h
 	mov ah, 00001111b                    ;colour
 	;mov si, offset FrameStyle + 12       ;si = addres of SPACE
@@ -447,6 +459,7 @@ ax_honest1:
 	mov al, bl
 	rep stosw
 
+	pop bp
 	endp
 	jmp back_text_line
 
