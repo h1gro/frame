@@ -2,46 +2,56 @@
 .code
 org 100h
 
-Start:  jmp main
+Start:  jmp Main
 
-    FRAME_COLOR equ 5fh
-    RunFrame equ 71h
-    EndFrame equ 77h
+FRAME_LEN    equ 14d            ;length of frame
+FRAME_HIGH   equ 13d            ;high of frame
 
-    start_rez equ 71h
-    time_rez   equ 77h
+FRAME_COLOR  equ 5fh            ;set color to frame
+BUFFER_COLOR equ 0fh            ;set color of buffer
 
-    Msg db 'Our rezident - OC has been installed!$'
-    FrameStyle db 6Fh, 7Eh, 6Fh, 6Ch, 20h
-    Strr db 'helloy!$'
+NUM_OF_REGS  equ 11d            ;amount of registers
 
-    Old_09h dw 0,0
+VIDEO_MEM    equ 0b800h         ;video segment
 
-    BlackFrame   equ 0Fh
-    FrameColour  equ 00011111b
-    FrameWeight  equ 30d
-    FrameHight   equ 10d
-    NewLineShift equ 96d
-    video_segment equ 0b800h
+CONSOLE_LEN  equ 80d            ;length of console
+CONSOLE_HIGH equ 25d            ;high of console
 
-    colour db 0
+START_KEY   equ 10h            ;scan code 'o'
+TIMER_KEY   equ 11h            ;scan code 't'
+DESTR_KEY   equ 12h            ;scan c'
 
-My_Int08h        proc
+FRAME_PTR    equ (CONSOLE_LEN - FRAME_LEN) * 2 - 2 * 4 + 80 * 2     ;set console ptr
+NEW_LINE     equ (CONSOLE_LEN - FRAME_LEN) * 2                      ;set new line
+
+BlackFrame   equ 0Fh
+FrameColour  equ 00011111b
+FrameWeight  equ 30d
+FrameHight   equ 10d
+FramePosition equ 200d
+NewLineShift equ 96d
+video_segment equ 0b800h
+
+;------------------------------------------------------------------
+;MyInt08h - func to create my int08h interrupt
+;------------------------------------------------------------------
+MyInt08h        proc
 
     push sp bp si di ss es ds dx cx bx ax           ;save registers
 
     push cs                                         ;cs = ds
-    pop  ds
+    pop ds
 
     cmp [TimerFrameFlag], 1d
+
     jne End_of_Int08h
 
     push si ax                                      ;save si
-    mov si, offset RegistersName
+    ;mov si, offset RegistersName
+    mov si, offset FrameStyle
     mov ah, FRAME_COLOR                             ;set color of registers
 
-    ;call WriteRegisters                                     ;draw registers and their value
-
+    ;call DrawFrame                                     ;draw registers and their value
 
     pop ax si                                       ;restoring si
 
@@ -60,36 +70,54 @@ End_of_Int08h:
     Old_Int08h_segment dw 0
 
     endp
-;--------------------------------------------------------------------
-My_Int09h proc
-
-    push ax bx cx dx bp sp si di ds es ss
+;------------------------------------------------------------------
+;MyInt09h - func to create my int09h interrupt
+;------------------------------------------------------------------
+MyInt09h        proc
+    push sp bp si di ss es ds dx cx bx ax ;save reg
 
     push cs
-    pop ds
+    pop ds                                ;mov code segment
 
     xor ax, ax
-    mov al, 60h                             ;scan_code
+    in al, 60h                            ;60h - keyboard
 
-    cmp al, start_rez
-    je start_draw
+    cmp al, START_KEY
+    je Start_draw                                 ;if 'o(open)' draw frame
 
-    cmp al, time_rez
-    je update_rez
+    cmp al, DESTR_KEY
+    je Destr_frame                                ;if 'backspace' draw destroy frame
+
+    cmp al, TIMER_KEY                     ;if 't(timer)' start updating registers
+    je Start_updating_reg
 
     jmp SkipAction
 
-start_draw:
+Start_draw:
 
-    mov ah, FrameColour
+    mov ah, FRAME_COLOR                  ;set frame color
+    mov si, offset FrameStyle            ;set frame style
+    call DrawFrame
+
+    ;mov si, offset RegistersName         ;name of registers
+    ;call WriteRegisters
+
+    jmp End_of_Int09h
+
+Destr_frame:
+
+    mov ah, BUFFER_COLOR                ;black color
+    mov si, offset DestrStyle           ;set frame style
 
     call DrawFrame
 
-    jmp return_regs
+    jmp End_of_Int09h
 
-update_rez:
+Start_updating_reg:
 
     xor [TimerFrameFlag], 1            ;set updating mode
+
+    jmp End_of_Int09h
 
 SkipAction:
     in  al, 61h             ;
@@ -102,21 +130,31 @@ SkipAction:
     mov al, 20h             ;end of interrupt with 21h
     out 20h, al             ;
 
-    return_regs:
+End_of_Int09h:
 
-    pop ss es ds di si sp bp dx cx bx ax
+    pop ax bx cx dx ds es ss di si bp sp          ;restoring reg
+;------------------------------------------------------------------
+;               DEFINE OLD INT 09H
+;------------------------------------------------------------------
+                db 0eah
+                Old_Int09h_offset  dw 0
+                Old_Int09h_segment dw 0
 
-    db 0eah
-    Old_Int09h_offset  dw 0
-    Old_Int09h_segment dw 0
+                endp
 
-    endp
-;-------------------------------------------------------------------
+;------------------------------------------------------------------
+;DrawFrame - draw frame in video mem
+;Entry: si - frame style
+;Exit: es:[di]
+;Destr: cx
+;------------------------------------------------------------------
 DrawFrame:
 
     mov bx, video_segment                   ;bx = addr videomem
     mov es, bx
 	mov bx, 0
+
+    mov di, FramePosition
 
     mov dh, FrameWeight
     mov dl, FrameHight
@@ -124,18 +162,18 @@ DrawFrame:
 
 	;mov ah, [colour]
 
-	mov si, offset FrameStyle          ;si = addres of LEFT_UP
+	;mov si, offset FrameStyle          ;si = addres of LEFT_UP
 	lodsb                              ;get LEFT_UP symbol in videomem
 	stosw                              ;print LEFT_UP symbol from videomem
 
 	mov cl, dh
 	mov ch, 0
 
-	mov si, offset FrameStyle + 2	   ;si = addres of DASH
+	;mov si, offset FrameStyle + 2	   ;si = addres of DASH
 	lodsb                              ;get DASH symbol in videomem
 	rep stosw						   ;print DASH symbol from videomem and repeat cx times
 
-	mov si, offset FrameStyle + 4      ;si = addres of RIGHT_UP
+	;mov si, offset FrameStyle + 4      ;si = addres of RIGHT_UP
 	lodsb                              ;get RIGHT_UP symbol in videomem
 	stosw                              ;print RIGHT_UP symbol from videomem
 
@@ -143,44 +181,100 @@ DrawFrame:
 
 	mov cl, dl                         ;cx = elem from FrameStyle in 14 position (=10)
 	mov ch, 0
-	;call DrawVert
+	call DrawVert
 
-	mov si, offset FrameStyle          ;si = addres of LEFT_DOWN
+	;mov si, offset FrameStyle          ;si = addres of LEFT_DOWN
 	lodsb							   ;get LEFT_DOWN symbol in videomem
 	stosw                              ;print LEFT_DOWN symbol from videomem
 
 	mov cl, dh                         ;cx = elem from FrameStyle in 16 position (=30)
 	mov ch, 0
-	mov si, offset FrameStyle + 2      ;si = addres of DASH
+	;mov si, offset FrameStyle + 2      ;si = addres of DASH
 
 	lodsb                              ;get DASH symbol in videomem
 	rep stosw                          ;print RIGHT_UP symbol from videomem and repeat cx times
 
-	mov si, offset FrameStyle + 4      ;si = addres of RIGHT_DOWN
+	;mov si, offset FrameStyle + 4      ;si = addres of RIGHT_DOWN
 	lodsb							   ;GET RIGHT_DOWN symbol in videomem
 	stosw                              ;print RIGHT_DOWN symbol from videomem
 
 	ret
-;-----------------------------------------------------
 
-next_line proc
+;-----------------------------------------------------------------------------------------------
 
-  mov ah, 02h
-  mov dl, 0Ah
-  int 21h
+DrawVert:
 
-  endp
-  ret
+	push ax
+	push cx                             ;cx - number of cycle repeat;put it to stack
 
-;--------------------------------------------
+	mov ah, 0h
+	mov al, dl
+	mov cl, 2h
+	div cl
+	mov bx, ax
+
+	pop cx
+	cmp ah, 0h
+	pop ax
+	jna cycle_draw_vert
+
+	inc bx
+	mov bh, 0h
+
+cycle_draw_vert:
+
+	push cx
+
+	;mov si, offset FrameStyle + 10       ;si = addres of VERT
+
+	lodsb                                ;get VERT symbol in videomem
+	stosw                                ;print VERT symbol from videomem
+
+	push ax
+
+	;cmp cx, bx
+	;je TextLine
+
+	mov ah, FrameColour                    ;colour
+	mov cl, dh                           ;cx = elem from FrameStyle in 16 position (=30)
+	mov ch, 0
+	;mov si, offset FrameStyle + 12       ;si = addres of SPACE
+
+	lodsb								 ;get SPACE symbol in videomem
+	rep stosw                            ;print SPACE symbol from videomem
+
+back_text_line:
+
+	pop ax
+
+	;mov si, offset FrameStyle + 10       ;si = address of VERT
+	lodsb                                ;get VERT symbol in videomem
+	stosw                                ;print VERT symbol from videomem
+
+	pop cx                               ;cx = old cx (=10)
+	add di, bp                           ;di += 96, 96 - shift for new line
+
+	sub si, 3h
+
+	loop cycle_draw_vert	             ;cycle on cx (draw vertical lines lenght 10)
+
+	add si, 3h
+	ret
+;-------------------------------------------------------------------
 
 
+;---------------------------------------------------------------------
+;                FRAME STYLE AND VARIABLES
+;---------------------------------------------------------------------
 TimerFrameFlag       db 0                               ;1 - show frame
+FrameStyle           db 6Fh, 5Fh, 6Fh, 7Ch, 20h, 7Ch, 6Fh, 5Fh, 6Fh
 ;FrameStyle           db 0c9h, 0cdh, 0bbh, 0bah, 32d, 0bah, 0c8h, 0cdh, 0bch
-DestrStyle           db 9d dup(3d)
+DestrStyle           db 3Ch, 7Eh, 3Ch, 26h, 20h, 26h, 3Ch, 7Eh, 3Ch
 RegistersName        db "Ax = ", "Bx = ", "Cx = ", "Dx = ", "Ds = ", "Es = ", "Ss = ", "Di = ", "Si = ", "Bp = ", "Sp = "
 ValRegisters         db 4d dup(0)
-
+;---------------------------------------------------------------------
+;               SAVING UP TO HER
+;---------------------------------------------------------------------
 SaveCode:
 
 Main:
@@ -191,17 +285,17 @@ Main:
     int 21h                         ;in bx - offset, es - segment
 
     mov Old_Int09h_offset,  bx
-    mov Old_Int09h_segment, es     ;save old interrupt vector
+    mov Old_Int09h_segment, es      ;save old interrupt vector
 
     cli                             ;clear int flags
 
     mov ax, 2509h                   ;set int 25h
     push cs
-    pop ds                          ;save code segment
-    lea dx, My_Int09h
+    pop ds                           ;save code segment
+    lea dx, MyInt09h
     int 21h
 
-    sti                             ;restoring int flags
+    sti                            ;restoring int flags
 
     mov ax, 3508h                   ;get old interrupt vector 08h
     int 21h                         ;in bx - offset, es - segment
@@ -214,12 +308,12 @@ Main:
     mov ax, 2508h                   ;set my int08h
     push cs
     pop ds                          ;save code segment
-    lea dx, My_Int08h
+    lea dx, MyInt08h
     int 21h
 
     sti
 
-    lea dx, SaveCode                ;saving code from start to SaveCode
+    lea dx, SaveCode         ;saving code from start to SaveCode
     shr dx, 4
     inc dx
 
